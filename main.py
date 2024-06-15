@@ -65,12 +65,14 @@ def process_image(image_path):
     if etag in csv["etag"].values:
       print(f"{image_path} ETag: ${etag} already processed. Skipping.\n")
       return None
-    total = pipe(image, "What is the total purchase?")
+    total = pipe(image, "What is the total?")
     receipt_date = pipe(image, "What is the receipt date?")
+    receipt_issuer = pipe(image, "What is the receipt issuer?")
     return {
         "image_path": image_path,
         "total": total[0]['answer'],
         "receipt_date": receipt_date[0]['answer'],
+        "receipt_issuer": receipt_issuer[0]['answer'],
         "etag": etag
     }
 
