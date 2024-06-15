@@ -6,6 +6,7 @@ import os
 import pytesseract
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
+import hashlib
 
 # Set Tesseract path if needed
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\MV\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
@@ -29,9 +30,29 @@ csv_file = "receipts_results.csv"
 if os.path.exists(csv_file):
     csv = pd.read_csv(csv_file)
 else:
-    csv = pd.DataFrame(columns=["image_path", "total", "receipt_date"])
+    csv = pd.DataFrame(columns=["image_path", "total", "receipt_date", "etag"])
 
 last_length = len(csv)  # Get the initial length of the DataFrame
+
+def calculate_image_etag(image):
+    try:
+        # Calculate MD5 hash of the image data
+        md5_hash = hashlib.md5()
+
+        # Convert image data to bytes
+        image_bytes = image.tobytes()
+
+        # Update hash with image data bytes
+        md5_hash.update(image_bytes)
+
+        # Compute hexadecimal digest of the hash
+        etag = md5_hash.hexdigest()
+
+        return etag
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 
 # Function to process each image
 def process_image(image_path):
@@ -40,12 +61,17 @@ def process_image(image_path):
         return None
     print(f"{image_path} Processing...\n")
     image = Image.open(image_path)
+    etag = calculate_image_etag(image)
+    if etag in csv["etag"].values:
+      print(f"{image_path} ETag: ${etag} already processed. Skipping.\n")
+      return None
     total = pipe(image, "What is the total purchase?")
     receipt_date = pipe(image, "What is the receipt date?")
     return {
         "image_path": image_path,
         "total": total[0]['answer'],
-        "receipt_date": receipt_date[0]['answer']
+        "receipt_date": receipt_date[0]['answer'],
+        "etag": etag
     }
 
 # Process images in parallel using ThreadPoolExecutor
