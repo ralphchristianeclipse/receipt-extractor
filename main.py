@@ -7,6 +7,8 @@ import pytesseract
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import hashlib
+import requests
+from io import BytesIO
 
 # Set Tesseract path if needed
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\MV\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
@@ -30,9 +32,43 @@ csv_file = "receipts_results.csv"
 if os.path.exists(csv_file):
     csv = pd.read_csv(csv_file)
 else:
-    csv = pd.DataFrame(columns=["image_path", "total", "receipt_date", "etag"])
+    csv = pd.DataFrame(columns=["image_path", "total", "receipt_date","receipt_issuer", "etag", "image_url"])
 
 last_length = len(csv)  # Get the initial length of the DataFrame
+
+def upload_image(image: Image):
+
+    # Save the image to a file-like object in memory
+    image_file = BytesIO()
+    image.save(image_file, format='JPEG', exif=image.info.get('exif'))
+    image_file.seek(0)
+
+    # Create a file object to be used with the requests library
+    files = {'file': ('output.jpg', image_file, 'image/jpeg')}
+
+    # Create the form data
+    data = {
+      'expiration': '10'  # expire in 3 minutes
+    }
+    # Make the POST request to upload the file
+    response = requests.post('https://tmpfiles.org/api/v1/upload', files=files, data=data)
+
+    # Check for success
+    if response.status_code == 200:
+        response_data = response.json()
+        # Extract the URL and replace the domain if it exists
+        if 'data' in response_data and 'url' in response_data['data']:
+            original_url = response_data['data']['url']
+            replaced_url = original_url.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/')
+            return replaced_url
+        else:
+            print('URL not found in the response')
+            return None
+    else:
+        print('File upload failed')
+        print('Response status code:', response.status_code)
+        print('Response text:', response.text)
+        return None
 
 def calculate_image_etag(image):
     try:
@@ -65,6 +101,9 @@ def process_image(image_path):
     if etag in csv["etag"].values:
       print(f"{image_path} ETag: ${etag} already processed. Skipping.\n")
       return None
+    print(f"Uploading... {image_path}")
+    image_url = upload_image(image)
+    print(f"Uploaded... {image_path}")
     total = pipe(image, "What is the total?")
     receipt_date = pipe(image, "What is the receipt date?")
     receipt_issuer = pipe(image, "What is the receipt issuer?")
@@ -73,7 +112,8 @@ def process_image(image_path):
         "total": total[0]['answer'],
         "receipt_date": receipt_date[0]['answer'],
         "receipt_issuer": receipt_issuer[0]['answer'],
-        "etag": etag
+        "etag": etag,
+        "image_url": image_url
     }
 
 # Process images in parallel using ThreadPoolExecutor
