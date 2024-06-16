@@ -9,6 +9,8 @@ import pandas as pd
 import hashlib
 import requests
 from io import BytesIO
+import re
+from datetime import datetime
 
 # Set Tesseract path if needed
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\MV\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
@@ -35,6 +37,43 @@ else:
     csv = pd.DataFrame(columns=["image_path", "total", "receipt_date","receipt_issuer", "etag", "image_url"])
 
 last_length = len(csv)  # Get the initial length of the DataFrame
+
+def parse_date(date_str):
+    if not date_str:
+        return date_str
+
+    # Define possible date formats
+    date_formats = [
+        "%B %d, %Y",    # 'December 22, 2014'
+        "%B %d %Y",     # 'June 10 2044'
+        "%d/%m/%Y",     # '26/08/2002'
+        "%m/%d/%y",     # '06/14/29'
+        "%B %d",        # 'June 14' (assuming current year)
+    ]
+
+    for fmt in date_formats:
+        try:
+            # Try parsing the date
+            parsed_date = datetime.strptime(date_str, fmt)
+            # Handle cases where only month and day are given (assume current year)
+            if fmt == "%B %d":
+                parsed_date = parsed_date.replace(year=datetime.now().year)
+            return parsed_date.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    return date_str
+
+def parse_float(value):
+    # Use a regular expression to remove all non-numeric characters except for the period.
+    cleaned_string = re.sub(r'[^\d.]', '', value)
+    try:
+        # Convert the cleaned string to a float
+        return float(cleaned_string)
+    except ValueError:
+        # Return None or some default value if conversion fails
+        return value
+
 
 def upload_image(image: Image):
 
@@ -104,13 +143,14 @@ def process_image(image_path):
     print(f"Uploading... {image_path}")
     image_url = upload_image(image)
     print(f"Uploaded... {image_path}")
+    # TODO: make the three pipe functions run in parallel or batch them
     total = pipe(image, "What is the total?")
     receipt_date = pipe(image, "What is the receipt date?")
     receipt_issuer = pipe(image, "What is the receipt issuer?")
     return {
         "image_path": image_path,
-        "total": total[0]['answer'],
-        "receipt_date": receipt_date[0]['answer'],
+        "total": parse_float(total[0]['answer']),
+        "receipt_date": parse_date(receipt_date[0]['answer']),
         "receipt_issuer": receipt_issuer[0]['answer'],
         "etag": etag,
         "image_url": image_url
