@@ -79,7 +79,12 @@ def upload_image(image: Image):
 
     # Save the image to a file-like object in memory
     image_file = BytesIO()
-    image.save(image_file, format='JPEG', exif=image.info.get('exif'))
+    exif = image.info.get('exif')
+    print(exif)
+    if(exif):
+      image.save(image_file, format='JPEG', exif=exif)
+    else:
+      image.save(image_file, format='JPEG')
     image_file.seek(0)
 
     # Create a file object to be used with the requests library
